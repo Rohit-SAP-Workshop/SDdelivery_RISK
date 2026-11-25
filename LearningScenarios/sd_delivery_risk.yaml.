@@ -1,0 +1,62 @@
+apiVersion: argoproj.io/v1alpha1
+kind: WorkflowTemplate
+metadata:
+  name: sd-delivery-risk-class01
+  annotations:
+    scenarios.ai.sap.com/name: "SAP SD Delivery Risk"
+    scenarios.ai.sap.com/description: "Sales order delivery risk workshop (live S/4HANA snapshot)"
+    executables.ai.sap.com/name: "Classify Delivery Risk"
+    executables.ai.sap.com/description: "Classifies open SAP SD orders extracted via SAP MCP"
+  labels:
+    scenarios.ai.sap.com/id: "sd-delivery-risk-class01"
+    ai.sap.com/version: "1.1"
+spec:
+  entrypoint: risk-pipeline
+  templates:
+    - name: risk-pipeline
+      steps:
+        - - name: classify-orders
+            template: risk-classifier
+
+    - name: risk-classifier
+      container:
+        image: docker.io/python:3.11-slim
+        command:
+          - python3
+          - "-c"
+        args:
+          - |
+            from datetime import date
+
+            SNAPSHOT_DATE = date(2026, 11, 19)
+
+            orders = [
+                {"order": "US00000029", "customer": "USCU_L10", "material": "MZ-TG-Y120",
+                 "qty": 100, "stock": 6137, "requested": date(2026, 11, 6)},
+                {"order": "US00000032", "customer": "USCU_S03", "material": "MZ-TG-Y120",
+                 "qty": 150, "stock": 6137, "requested": date(2026, 11, 6)},
+                {"order": "US00000033", "customer": "USCU_S03", "material": "MZ-TG-Y120",
+                 "qty": 200, "stock": 6137, "requested": date(2026, 11, 6)},
+                {"order": "US00000003", "customer": "17100003", "material": "APEX-SEDAN_SA",
+                 "qty": 2, "stock": 0, "requested": date(2026, 8, 4)},
+                {"order": "6347", "customer": "17100001", "material": "APEX-SEDAN_MK",
+                 "qty": 1, "stock": 0, "requested": date(2026, 7, 24)}
+            ]
+
+            print("SAP SD DELIVERY RISK REPORT (live S/4HANA snapshot)")
+            print(f"Snapshot date: {SNAPSHOT_DATE}")
+            print("-" * 60)
+
+            for o in orders:
+                days_overdue = (SNAPSHOT_DATE - o["requested"]).days
+                if o["stock"] < o["qty"]:
+                    risk, reason = "HIGH", "stock below ordered quantity"
+                elif days_overdue > 0:
+                    risk, reason = "MEDIUM", f"stock OK but {days_overdue} days past requested date"
+                else:
+                    risk, reason = "LOW", "stock OK and not yet due"
+
+                print(
+                    f"Sales Order {o['order']} | {o['material']} | "
+                    f"qty {o['qty']} / stock {o['stock']} | {risk} RISK ({reason})"
+                )
